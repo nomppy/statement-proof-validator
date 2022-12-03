@@ -40,25 +40,10 @@
 (in-package proof-validator)
 
 (asdf:load-system :uiop)
-(ql:quickload 'cl-ppcre)
+(ql:quickload "str")
 
 (defparameter *lines* nil)
 (defun trim-space (str) (string-trim '(#\ ) str))
-
-(defun main-op (str)
-  (if (char-equal #\- (char str 0))
-      '-
-      (let ((s (read-from-string str)))
-        (if (consp s)
-            (nth (floor (/ (length s) 2)) s)
-            nil))))
-
-(defun main-states (str op)
-  (if (eql op '-)
-      (list (read-from-string (subseq str 1)))
-      (let ((sep (read-from-string str)))
-        ;; Skipping the operator
-        (list (first sep) (third sep)))))
 
 (defun match-next-balanced-pair (string left right &optional (start 0) (end (length string)))
   (let* ((count 1) (before (position left string :start start)) (after (1+ before)))
@@ -80,26 +65,15 @@
 
 (defun parse-state (str)
   (read-from-string (replace-negs str)))
-  ;; (let ((s (read-from-string
-  ;;           (replace-negs str))))
-  ;;   (if (atom s)
-  ;;       (pars-state (read-from-string (format nil "(~A)" str)))
-  ;;       (pars-state s))))
 
-;; ;;   (let ((op (main-op (replace-negs str))))
-;;     (if op
-;;         (cons op (main-states str op))
-;;         ;; cons 'nil so that state has the form (op . xyz)
-;;         ; (cons nil (read-from-string str)))))
-;;         (read-from-string str))))
-;; ;
 (defun parse-logic (str)
-  (let ((sep (uiop:split-string str :separator '(#\  #\,))))
+  (let ((sep (remove-if #'str:emptyp (uiop:split-string str :separator '(#\Space #\,)))))
     (cons
      (intern (string-upcase (first sep)))
      (mapcar #'parse-integer (cdr sep)))))
 
 (defun parse-line (line)
+  (when (eql line 'eof) (return-from parse-line 'eof))
 
   ;;; Examples of lines for reference
   ; 1. (A ^ B); MP 1,2
@@ -241,8 +215,9 @@
 (defun validate-file (filename)
   (setf *lines* nil)
   (with-open-file (str (make-pathname :name filename))
-    (defparameter *claim* (read-from-string (read-line str)))
-    (do ((line (read-line str nil 'eof)
-               (read-line str nil 'eof)))
-        ((eql line 'eof) *lines*)
-      (validate-line (parse-line line)))))
+    (defparameter *claim* (parse-state (read-line str)))
+    (do ((line (parse-line (read-line str nil 'eof))
+               (parse-line (read-line str nil 'eof))))
+        ((eql line 'eof) (values (equal *claim* (get (first *lines*) 'state)) *lines*))
+      (validate-line line))
+    ))
