@@ -40,9 +40,12 @@
 (in-package proof-validator)
 
 (asdf:load-system :uiop)
+(ql:quickload "cl-ppcre")
 (ql:quickload "str")
 
 (defparameter *lines* nil)
+(defparameter *claim* nil)
+
 (defun trim-space (str) (string-trim '(#\ ) str))
 
 (defun match-next-balanced-pair (string left right &optional (start 0) (end (length string)))
@@ -215,7 +218,7 @@
 (defun validate-file (filename)
   (setf *lines* nil)
   (with-open-file (str (make-pathname :name filename))
-    (defparameter *claim* (parse-state (read-line str)))
+    (setf *claim* (parse-state (read-line str)))
     (do ((line (parse-line (read-line str nil 'eof))
                (parse-line (read-line str nil 'eof))))
         ((eql line 'eof) (values (equal *claim* (get (first *lines*) 'state)) *lines*))
