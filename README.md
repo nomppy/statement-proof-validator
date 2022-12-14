@@ -1,14 +1,15 @@
 # proof-validator
 ### _Kenneth Sun <kennett.sun@gmail.com>_
 
-;This program takes in .txt file(s) as input, where each line is a line in a proof,
-;formatted like so:
-;   input.txt
-;   2;B
-;   1. A
-;   2. (A -> B)
-;   3. B; MP 1,2
-;
+This program takes in .txt file(s) as input, where each line is a line in a proof,
+
+The input should be formatted like so:
+
+```
+
+```
+
+
 ;The first line must have an integer indicating how many lines are in the initial premise,
 ;followed by what conclusion the proof should reach.
 ;Every line thereafter must contain a statement and the logical step used to obtain it, separated by a semicolon (;).

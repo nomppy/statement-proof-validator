@@ -1,6 +1,7 @@
 (in-package #:proof-validator)
 (defparameter *lines* nil)
 (defparameter *claim* nil)
+(defparameter *depth* 1)
 
 (defun trim-space (str) (string-trim '(#\ ) str))
 
@@ -28,7 +29,7 @@
 (defun parse-logic (str)
   (let ((sep (remove-if #'str:emptyp (uiop:split-string str :separator '(#\Space #\,)))))
     (cons
-     (intern (string-upcase (first sep)))
+     (intern (string-upcase (first sep))) ;upcase because lisp's internals are upcase
      (mapcar #'parse-integer (cdr sep)))))
 
 (defun parse-line (line)
@@ -40,18 +41,20 @@
   ; 2. -B; DN
   (let ((sep (mapcar #'trim-space (uiop:split-string line :separator '(#\. #\;)))))
     (let ((L (intern (n-ln (parse-integer (first sep))))))
+      (setf (get L 'depth) *depth*)
       (setf (get L 'state) (parse-state (second sep)))
-      (if (third sep) (setf (get L 'logic) (parse-logic (third sep))))
+      (when (third sep) (setf (get L 'logic) (parse-logic (third sep))))
       (setf *lines* (cons L *lines*))
       L)))
 
 (defun n-ln (n) (format nil "L~A" n))
-(defun ln-sym (ln) (find-symbol (n-ln ln)))
+(defun n-sym (ln) (find-symbol (n-ln ln)))
+(defun sym-n (sym) (parse-integer (subseq (symbol-name sym) 1)))
 (defun neg (sym) (list '- sym))
 
 (defun op-in-ln (largs op)
-  (let ((l1 (ln-sym (first largs)))
-        (l2 (ln-sym (second largs))))
+  (let ((l1 (first largs))
+        (l2 (second largs)))
     (cond
       ((or (null l1) (null l2)) nil)
       ((and (consp (get l1 'state))
@@ -99,15 +102,15 @@
       (t (string "Valid")))))
 
 (defun add (claim larg)
-  (let ((l (ln-sym (car larg))))
+  (let ((l (car larg)))
     (cond
       ((not (and l (member (get l 'state) claim :test #'equal))) (format nil "Incorrect usage: L~A must exist and be a junction in claim" (car larg)))
       ((not (eql (second claim) 'v)) (string "Incorrect usage: main operator in claim must be \"v\""))
       (t (string "Valid")))))
 
 (defun conj (claim largs)
-  (let ((l1 (ln-sym (first largs)))
-        (l2 (ln-sym (second largs))))
+  (let ((l1 (first largs))
+        (l2 (second largs)))
     (cond
       ((or (null l1) (null l2)) (format nil "Invalid reference lines: need two lines, both must exist"))
       ((and (not (equal claim (list (get l1 'state) '^ (get l2 'state))))
@@ -116,7 +119,7 @@
       (t (string "Valid")))))
 
 (defun simp (claim larg)
-  (let ((l (ln-sym (car larg))))
+  (let ((l (car larg)))
     (cond
       ((null l) (format nil "Invalid reference line: ~A must exist" l))
       ((or (not (eql (second (get l 'state)) '^)) (not (member claim (get l 'state))))
@@ -124,7 +127,7 @@
       (t (string "Valid")))))
 
 (defun dn (claim larg)
-  (let ((l (ln-sym (car larg))))
+  (let ((l (car larg)))
     (cond
       ((null l) (format nil "Invalid reference line: ~A must exist" l))
       ((and (not (equal claim (neg (neg (get l 'state)))))
@@ -133,13 +136,13 @@
       (t (string "Valid")))))
 
 (defun rep (claim larg)
-  (if (not (equal (get (ln-sym (car larg)) 'state) claim))
+  (if (not (equal (get (car larg) 'state) claim))
       (string "Invalid usage")
       (string "Valid")))
 
 (defun bi (claim largs)
-  (let ((l1 (ln-sym (first largs)))
-        (l2 (ln-sym (second largs))))
+  (let ((l1 (first largs))
+        (l2 (second largs)))
     (cond
       ((not (eql (second (get l1 'state)) '=>)) (format nil "Invalid reference line: ~A must exist and have \"=>\" as main operator" l1))
       ((not (eql (second (get l2 'state)) '=>)) (format nil "Invalid reference line: ~A must exist and have \"=>\" as main operator" l2))
@@ -161,6 +164,43 @@
        (format nil "Incorrect usage: claim is not an argument in ~A" lnop))
       (t (string "Valid")))))
 
+(defun condi (claim largs line)
+  (when (null largs)
+    (setf (get line 'depth) (incf *depth*))
+    (return-from condi (format nil "Assuming ~A for conditional proof (depth: ~A)" claim *depth*)))
+
+  (let ((l1 (first largs))
+        (l2 (second largs)))
+    (setf (get line 'depth) (decf *depth*))
+    (cond
+      ((or (null l1) (null l2)) (format nil "Invalid reference lines: need two lines, both must exist"))
+      ((not (equal (list (get l1 'state) '=> (get l2 'state)) claim))
+       (format nil "Claim must be (~A => ~A)" (get l1 'state) (get l2 'state)))
+      (t (format nil "Valid; conclude conditional proof (depth: ~A)" *depth*)))))
+
+(defun ind (claim largs line)
+  (when (null largs)
+    (setf (get line 'depth) (incf *depth*))
+    (return-from ind (format nil "Assuming ~A for indirect proof (depth: ~A)" claim *depth*)))
+
+  (let* ((l1 (first largs))
+         (l2 (second largs)))
+    (setf (get line 'depth) (decf *depth*))
+    (cond
+      ((or (null l1) (null l2)) (format nil "Invalid reference lines: need two lines, both must exist"))
+      ((not (or (equal (neg (get (n-sym (1+ (sym-n l2))) 'state)) (get l2 'state))
+                (equal (neg (get l2 'state)) (get (n-sym (1- (sym-n l2))) 'state))
+                (equal (neg (get l2 'state)) (get l1 'state))
+                (equal (neg (get l1 'state)) (get l2 'state))))
+       (format nil "~A must contradict either the assumption or the previous line" l2))
+      ((not (equal (get l1 'state) (neg claim)))
+       (format nil "Claim must be the negation of the assumption, ~A" l1))
+      (t (format nil "Valid; conclude indirect proof (depth: ~A)" *depth*)))))
+
+(defun check-largs (largs)
+  (dolist (l largs nil)
+    (when (not (and (n-sym l) (<= (get (n-sym l) 'depth) *depth*))) (return-from check-largs t))))
+
 (defun validate-line (line)
   (let ((logic (get line 'logic))
         (claim (get line 'state)))
@@ -168,15 +208,25 @@
             (cond ((null logic) (string "No justification, taken as premise"))
                   ((null (fboundp (car logic))) (format nil "Unknown operation: ~A" (car logic))) ; check if provided justification has a corresponding defun
                   ; ((null (val-ln (cadr l))) (format nil "Invalid reference line: ~A" (cadr l)))
-                  (t (funcall (car logic) claim (cdr logic)))) ; calls corresponding rule of inference with claim and whatever line args were provided
-            )))
+                  ((check-largs (cdr logic)) (format nil "Invalid reference lines: check existence and depth"))
+                  ((member (car logic) '(CONDI IND)) (funcall (car logic) claim (mapcar #'n-sym (cdr logic)) line))
+                  (t (funcall (car logic) claim (mapcar #'n-sym (cdr logic)))) ; calls corresponding rule of inference with claim and whatever line args were provided
+            ))))
+
+(defun clean-line (ln)
+  (setf (symbol-plist ln) nil)
+  (makunbound ln))
 
 (defun validate-file (filename)
+  (setf *depth* 1)
+  (mapcar #'clean-line *lines*)
   (setf *lines* nil)
   (with-open-file (str (make-pathname :name filename))
     (setf *claim* (parse-state (read-line str)))
     (do ((line (parse-line (read-line str nil 'eof))
                (parse-line (read-line str nil 'eof))))
-        ((eql line 'eof) (values (equal *claim* (get (first *lines*) 'state)) *lines*))
+        ((eql line 'eof) (values
+                          (and (eql *depth* 1) (equal *claim* (get (first *lines*) 'state)))
+                          *lines*))
       (validate-line line))
     ))

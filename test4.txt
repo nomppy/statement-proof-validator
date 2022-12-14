@@ -1,0 +1,8 @@
+(A => B)
+1. (-A v B)
+   2. A; condi
+      3. -B; ind
+      4. --A; dn 2
+      5. B; mtp 4,1
+   6. B; ind 3,5
+7. (A => B); condi 2,6
