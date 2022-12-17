@@ -1,6 +1,9 @@
 # proof-validator
 ### _Kenneth Sun <kennett.sun@gmail.com>_
 
+![Screenshot of the code and output from running test4.txt](example.png)
+(Screenshot of code running on my machine, using Doom Emacs, Sly, SBCL)
+
 This program takes in .txt file(s) as input, where each line is a line in a proof, and validates according to the rules of propositional logic that each step is valid.
 The program will note all occurances of improper usage but will always check every line assuming that the previous lines are valid.
 
